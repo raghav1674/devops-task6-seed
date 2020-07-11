@@ -1,0 +1,86 @@
+job("github_pull_DSL")
+{
+  scm{
+    
+    github("raghav1674/devopstask3","master")
+    
+  }
+  
+  triggers{
+        
+       authenticationToken('git_commit')
+    
+        githubPush()
+    
+    
+    
+
+  
+  
+  
+}
+  
+  steps{
+    
+    
+    shell("rm -rvf /storage/; mkdir /storage/;cp -rvf * /storage/;python3 /workdir/check_forext.py \${BUILD_NUMBER}")
+
+          }
+}
+
+job("detect_DSL"){
+  
+   triggers {
+        upstream('github_pull_DSL', 'SUCCESS')
+    }
+  
+  steps{
+    
+    shell("if ssh root@192.168.99.103 ls /html_test/ | grep html; then ssh root@192.168.99.103 curl -u admin:redhat http://192.168.99.103:8080/job/html_dep_DSL/build?token=html_dep; else   if ssh root@192.168.99.103 ls /php_test/ | grep php;  then ssh root@192.168.99.103  curl -u admin:redhathttp://192.168.99.103:8080/job/php_dep_DSL/build?token=php_dep;fi;fi;if ssh root@192.168.99.103 ls /php_test/ | grep php;then ssh root@192.168.99.103 curl -u admin:redhat http://192.168.99.103:8080/job/php_dep/build?token=php_success;fi;")
+}
+}
+
+job("html_dep_DSL")
+{
+  
+  triggers{
+    authenticationToken('html_dep')
+    upstream('detect_DSL','SUCCESS')
+    
+  }
+  
+  steps{
+    shell("if ssh root@192.168.99.103 kubectl get pvc | grep html;then if ssh root@192.168.99.103 kubectl get deploy | grep html; then  ssh root@192.168.99.103 kubectl set image deploy/html-app html-con=raghav1674/html-task:v\${BUILD_NUMBER};  else ssh root@192.168.99.103 kubectlcreate -f /kuberevision/create_html_dep.yml;fi;else ssh root@192.168.99.103 kubectl create -f /kuberevision/create_html_deploy.yml;fi;")
+  }
+}
+
+
+
+job("php_dep_DSL")
+{
+  
+  triggers{
+    authenticationToken('php_dep')
+   
+    upstream('detect_DSL','SUCCESS')
+    
+  }
+  
+  steps{
+    shell("if ssh root@192.168.99.103 kubectl get pvc | grep php;then if ssh root@192.168.99.103 kubectl get deploy | grep php; then  ssh root@192.168.99.103 kubectl set image deploy/html-app html-con=raghav1674/php-task:v\${BUILD_NUMBER};  else ssh root@192.168.99.103 kubectlcreate -f /kuberevision/create_html_dep.yml;fi;else ssh root@192.168.99.103 kubectl create -f /kuberevision/create_php_deploy.yml;fi;")
+  }
+}
+
+job("test_DSL"){
+  
+  triggers{
+    
+    upstream("php_dep_DSL,html_dep_DSL")
+  }
+  
+  steps{
+    
+    shell("x=0; status_php=\$(curl -o /dev/null -s -w '%{http_code}' 192.168.99.100:32000);if [ \$status_php == 200 ];then echo working fine;else ssh root@192.168.99.103 kubectl rollout undo deploy/php-app; echo 'PHP SITE NOT WORKING ERROR CODE: \$status_php' | mail -s 'PHP SITE NOT WORKING' -v 'raghav.81-cse-17@mietjammu.in'; x=1;fi; status_html=\$(curl -o /dev/null -s -w '%{http_code}'192.168.99.100:32100);if [ \$status_html == 200 ];then echo working fine;else ssh root@192.168.99.103 kubectl rollout undo deploy/html-app; echo 'HTML SITE NOT WORKING ERROR CODE: \$status_html' | mail -s 'HTML SITE NOT WORKING' -v 'raghav.81-cse-17@mietjammu.in'; fi; if [ \$x == 1 ]; then  curl -u admin:redhat http://192.168.99.103:8080/job/github_pull_DSL/build?token=git_commit; else echo all working fine;fi;")
+    
+  }
+}
